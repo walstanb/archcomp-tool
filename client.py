@@ -129,10 +129,10 @@ def process(file):
 
     except ValueError as e:
         logging.error(f"Falstar error: {str(e)}")
+        return False
+
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
-    finally:
-        cleanup(file["id"])
         return False
 
 
@@ -225,7 +225,7 @@ def execute(service):
                 continue
             if process(file):
                 upload_files(service, base_folder.get("id"), file)
-                cleanup(file["id"])
+            cleanup(file["id"])
 
         while "nextPageToken" in results:
             page_token = results["nextPageToken"]
