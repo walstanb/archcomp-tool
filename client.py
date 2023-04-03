@@ -122,7 +122,7 @@ def process(file):
         logging.info(p)
 
         if "Exception" in str(p):
-            raise ValueError
+            raise ValueError("Exception occured while running Falstar")
 
         logging.info("File processed")
         return True
