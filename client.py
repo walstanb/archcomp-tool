@@ -124,6 +124,7 @@ def process(file):
         if "Exception" in str(p):
             raise ValueError
 
+        logging.info("File processed")
         return True
 
     except ValueError as e:
@@ -136,6 +137,7 @@ def process(file):
 
 
 def upload_files(service, base_folder_id, file):
+    logging.info("Uploading file")
     filename = file["name"].split(".")[0]
 
     path = os.path.join(os.getcwd(), "data", file["id"])
