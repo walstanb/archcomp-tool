@@ -1,0 +1,24 @@
+[tool.poetry]
+name = "archcomp-tool"
+version = "0.1.0"
+description = ""
+authors = ["Walstan"]
+license = "MIT"
+readme = "README.md"
+packages = [{include = "archcomp_tool"}]
+
+[tool.poetry.dependencies]
+python = "^3.10"
+google-auth = "^2.17.0"
+google-api-python-client = "^2.83.0"
+google-auth-oauthlib = "^1.0.0"
+google-auth-httplib2 = "^0.1.0"
+pandas = "^1.5.3"
+
+
+[tool.poetry.group.dev.dependencies]
+ipykernel = "^6.22.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"

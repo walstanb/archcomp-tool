@@ -1,0 +1,27 @@
+clear;
+T = readtable("/home/local/ASUAD/tkhandai/RA_work/archcomphelper/archcompwebsite/uploads/c3110c7c-7928-486c-b432-4f92d19f39ca_BO_ARCH2022_08112022.csv",...
+    'Format', "auto", "Delimiter", ',');
+
+categories = convertvars(T, ["system", "property", "instance"], "categorical");
+% unique_systems = unique(T.system);
+% group_categories = groupsummary(categories, ["system", "property", "instance"])
+[groups, group_names] = findgroups(categories(:,1:3));
+
+unique_groups = unique(groups);
+dic = containers.Map;
+
+for i = 1:length(unique_groups)
+    subTable = categories(groups == i, :);
+    
+    dic(strjoin(string(group_names{i,:}), "___")) = subTable;
+end
+
+dickeys = dic.keys();
+
+for j = 1:length(dickeys)
+    x = dic(dickeys{j});
+    for j = 1:size(x,1)
+        y = double(x{j, "input"})
+        df
+    end
+end
