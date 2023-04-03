@@ -138,9 +138,10 @@ def process(file):
 
 def upload_files(service, base_folder_id, file):
     logging.info("Uploading file")
+    file_id = file["id"]
     filename = file["name"].split(".")[0]
 
-    path = os.path.join(os.getcwd(), "data", file["id"])
+    path = os.path.join(os.getcwd(), "data", file_id)
     csv_files = [
         f
         for f in os.listdir(path)
@@ -186,7 +187,7 @@ def upload_files(service, base_folder_id, file):
                 f'"{file_name}" has been uploaded to Google Drive with ID: {file.get("id")}'
             )
 
-        service.files().delete(fileId=file["id"]).execute()
+        service.files().delete(fileId=file_id).execute()
 
     except HttpError as error:
         logging.error(f"An error occurred: {error}")
