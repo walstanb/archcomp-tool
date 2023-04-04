@@ -57,6 +57,7 @@ def download_and_preprocess(service, file):
         validate(data)
     except Exception as e:
         logging.error(f"Validation failed: {str(e)}")
+        cleanup(file["id"])
         return False
     return True
 
@@ -129,10 +130,12 @@ def process(file):
 
     except ValueError as e:
         logging.error(f"Falstar error: {str(e)}")
+        cleanup(file["id"])
         return False
 
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
+        cleanup(file["id"])
         return False
 
 
@@ -191,6 +194,7 @@ def upload_files(service, base_folder_id, file):
 
     except HttpError as error:
         logging.error(f"An error occurred: {error}")
+        cleanup(file_id)
         raise
 
 
@@ -236,8 +240,13 @@ def execute(service):
                 .execute()
             )
             files = results.get("files", [])
+
             for file in files:
-                logging.info(f"{file['name']} ({file['id']})")
+                if not download_and_preprocess(service, file):
+                    continue
+                if process(file):
+                    upload_files(service, base_folder.get("id"), file)
+                cleanup(file["id"])
 
 
 # If modifying these scopes, delete the file token.json.
