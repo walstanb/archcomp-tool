@@ -81,6 +81,7 @@ def cleanup(file_id):
     try:
         folder_path = os.path.join(os.getcwd(), "data", file_id)
         shutil.rmtree(folder_path)
+        logging.info("Cleanup started..")
 
     except FileNotFoundError:
         logging.error(f"Error: {folder_path} does not exist.")
