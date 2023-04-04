@@ -92,7 +92,7 @@ def cleanup(file_id):
 def process(input_file):
     try:
         input_filename = input_file["name"]
-        logging.info(f"Startting to process file {input_filename}")
+        logging.info(f"Starting to process file {input_filename}")
         path = os.path.join(os.getcwd(), "data", input_file["id"])
         subprocess.call(
             [
@@ -147,7 +147,7 @@ def upload_files(service, base_folder_id, input_file):
     input_filename_woext = input_file["name"].split(".")[0]
 
     path = os.path.join(os.getcwd(), "data", input_file_id)
-    csv_files = [
+    output_csv_files = [
         f
         for f in os.listdir(path)
         if os.path.isfile(os.path.join(path, f)) and f.endswith(".csv")
@@ -177,38 +177,40 @@ def upload_files(service, base_folder_id, input_file):
 
     # Upload each CSV file to Google Drive
     try:
-        for file_name in csv_files:
+        for output_csv_filename in output_csv_files:
             # Move input file to results folder
-            if file_name == input_file["name"]:
-                file = (
+            if output_csv_filename == input_file["name"]:
+                f = (
                     service.files()
                     .update(
                         fileId=input_file_id,
-                        addParents=[output_folder_id],
-                        removeParents=input_file["parents"],
+                        addParents=output_folder_id,
+                        removeParents=",".join(input_file.get("parents")),
                         fields="id, parents",
                     )
                     .execute()
                 )
                 logging.info(
-                    f'"{file_name}" has been moved in to output folder with ID: {file.get("id")}'
+                    f'"{output_csv_filename}" has been moved in to output folder with ID: {f.get("id")}'
                 )
                 continue
 
             # Create a new file in Google Drive
-            file_metadata = {
-                "name": file_name,
+            metadata = {
+                "name": output_csv_filename,
                 "parents": [output_folder_id],
                 "mimeType": "text/csv",
             }
-            media = MediaFileUpload(os.path.join(path, file_name), mimetype="text/csv")
-            file = (
+            media = MediaFileUpload(
+                os.path.join(path, output_csv_filename), mimetype="text/csv"
+            )
+            f = (
                 service.files()
-                .create(body=file_metadata, media_body=media, fields="id")
+                .create(body=metadata, media_body=media, fields="id")
                 .execute()
             )
             logging.info(
-                f'"{file_name}" has been uploaded to Google Drive with ID: {file.get("id")}'
+                f'"{output_csv_filename}" has been uploaded to Google Drive with ID: {f.get("id")}'
             )
 
     except HttpError as error:
