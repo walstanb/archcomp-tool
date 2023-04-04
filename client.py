@@ -218,54 +218,64 @@ def upload_files(service, base_folder_id, input_file):
 
 
 def execute(service):
-    base_folder_name = "Archcomp"
-    query = f"mimeType='application/vnd.google-apps.folder' and trashed=false and name='{base_folder_name}'"
-    results = (
-        service.files().list(q=query, fields="nextPageToken, files(id, name)").execute()
-    )
-    base_folder = None
-    if len(results["files"]) == 0:
-        folder_metadata = {
-            "name": base_folder_name,
-            "mimeType": "application/vnd.google-apps.folder",
-        }
-        base_folder = (
-            service.files().create(body=folder_metadata, fields="id").execute()
+    try:
+        base_folder_name = "Archcomp"
+        query = f"mimeType='application/vnd.google-apps.folder' and trashed=false and name='{base_folder_name}'"
+        results = (
+            service.files()
+            .list(q=query, fields="nextPageToken, files(id, name)")
+            .execute()
         )
-        logging.info(
-            f"Base Folder '{base_folder_name}' created with ID: '{base_folder.get('id')}'"
-        )
-    else:
-        base_folder = results["files"][0]
-    query = f"'{base_folder['id']}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
-    fields = "nextPageToken, files(id, name, parents)"
-    results = service.files().list(q=query, fields=fields).execute()
-    files = results.get("files", [])
-    if not files:
-        logging.info("No new files found.")
-    else:
-        for input_file in files:
-            if not download_and_preprocess(service, input_file):
-                continue
-            if process(input_file):
-                upload_files(service, base_folder.get("id"), input_file)
-            cleanup(input_file["id"])
-
-        while "nextPageToken" in results:
-            page_token = results["nextPageToken"]
-            results = (
-                service.files()
-                .list(q=query, fields=fields, pageToken=page_token)
-                .execute()
+        base_folder = None
+        if len(results["files"]) == 0:
+            folder_metadata = {
+                "name": base_folder_name,
+                "mimeType": "application/vnd.google-apps.folder",
+            }
+            base_folder = (
+                service.files().create(body=folder_metadata, fields="id").execute()
             )
-            files = results.get("files", [])
-
+            logging.info(
+                f"Base Folder '{base_folder_name}' created with ID: '{base_folder.get('id')}'"
+            )
+        else:
+            base_folder = results["files"][0]
+        query = f"'{base_folder['id']}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
+        fields = "nextPageToken, files(id, name, parents)"
+        results = service.files().list(q=query, fields=fields).execute()
+        files = results.get("files", [])
+        if not files:
+            logging.info("No new files found.")
+        else:
             for input_file in files:
                 if not download_and_preprocess(service, input_file):
                     continue
                 if process(input_file):
                     upload_files(service, base_folder.get("id"), input_file)
                 cleanup(input_file["id"])
+
+            while "nextPageToken" in results:
+                page_token = results["nextPageToken"]
+                results = (
+                    service.files()
+                    .list(q=query, fields=fields, pageToken=page_token)
+                    .execute()
+                )
+                files = results.get("files", [])
+
+                for input_file in files:
+                    if not download_and_preprocess(service, input_file):
+                        continue
+                    if process(input_file):
+                        upload_files(service, base_folder.get("id"), input_file)
+                    cleanup(input_file["id"])
+    except HttpError as error:
+        if error.resp.status == 504:
+            logging.error(
+                "Timeout error: The request timed out. Please try again later."
+            )
+        else:
+            logging.error(f"An error occurred: {error}")
 
 
 # If modifying these scopes, delete the file token.json.
