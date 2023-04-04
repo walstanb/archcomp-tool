@@ -47,17 +47,17 @@ def download_csv_file(service, file):
     return fh.getvalue()
 
 
-def download_and_preprocess(service, file):
-    name, ext = os.path.splitext(file["name"])
+def download_and_preprocess(service, input_file):
+    name, ext = os.path.splitext(input_file["name"])
     if ext != ".csv":
-        logging.info(f"{file['name']}: File skipped not a CSV file.")
+        logging.info(f"{input_file['name']}: File skipped not a CSV file.")
         return False
-    data = download_csv_file(service, file)
+    data = download_csv_file(service, input_file)
     try:
         validate(data)
     except Exception as e:
         logging.error(f"Validation failed: {str(e)}")
-        cleanup(file["id"])
+        cleanup(input_file["id"])
         return False
     return True
 
@@ -88,10 +88,10 @@ def cleanup(file_id):
         logging.error(f"Error: {folder_path} : {e.strerror}")
 
 
-def process(file):
+def process(input_file):
     try:
-        filename = file["name"]
-        path = os.path.join(os.getcwd(), "data", file["id"])
+        input_filename = input_file["name"]
+        path = os.path.join(os.getcwd(), "data", input_file["id"])
         subprocess.call(
             [
                 "scp",
@@ -102,9 +102,9 @@ def process(file):
         )
 
         cfg_string = f'(include "models.cfg")\n(set-log "validation-log.csv")\
-        \n(set-report "validation-report.csv")\n(validate "{filename}")'
+        \n(set-report "validation-report.csv")\n(validate "{input_filename}")'
 
-        filename_withoutext = filename.split(".")[0]
+        filename_withoutext = input_filename.split(".")[0]
         with open(
             os.path.join(path, f"{filename_withoutext}.cfg"),
             "w",
@@ -130,21 +130,21 @@ def process(file):
 
     except ValueError as e:
         logging.error(f"Falstar error: {str(e)}")
-        cleanup(file["id"])
+        cleanup(input_file["id"])
         return False
 
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
-        cleanup(file["id"])
+        cleanup(input_file["id"])
         return False
 
 
-def upload_files(service, base_folder_id, file):
+def upload_files(service, base_folder_id, input_file):
     logging.info("Uploading file")
-    file_id = file["id"]
-    filename = file["name"].split(".")[0]
+    input_file_id = input_file["id"]
+    input_filename = input_file["name"].split(".")[0]
 
-    path = os.path.join(os.getcwd(), "data", file_id)
+    path = os.path.join(os.getcwd(), "data", input_file_id)
     csv_files = [
         f
         for f in os.listdir(path)
@@ -152,32 +152,51 @@ def upload_files(service, base_folder_id, file):
     ]
 
     query = "mimeType='application/vnd.google-apps.folder' and trashed=false and name='{}'".format(
-        filename
+        input_filename
     )
     results = (
         service.files().list(q=query, fields="nextPageToken, files(id, name)").execute()
     )
 
-    folder = None
+    output_folder = None
     if len(results["files"]) == 0:
-        folder_metadata = {
-            "name": filename,
+        output_folder_metadata = {
+            "name": input_filename,
             "parents": [base_folder_id],
             "mimeType": "application/vnd.google-apps.folder",
         }
-        folder = service.files().create(body=folder_metadata, fields="id").execute()
+        output_folder = (
+            service.files().create(body=output_folder_metadata, fields="id").execute()
+        )
     else:
-        folder = results["files"][0]
+        output_folder = results["files"][0]
 
-    folder_id = folder.get("id")
+    output_folder_id = output_folder.get("id")
 
     # Upload each CSV file to Google Drive
     try:
         for file_name in csv_files:
+            # Move input file to results folder
+            if file_name == input_filename:
+                file = (
+                    service.files()
+                    .update(
+                        fileId=input_file_id,
+                        addParents=[output_folder_id],
+                        removeParents=input_file["parents"],
+                        fields="id, parents",
+                    )
+                    .execute()
+                )
+                logging.info(
+                    f'"{file_name}" has been uploaded to Google Drive with ID: {file.get("id")}'
+                )
+                continue
+
             # Create a new file in Google Drive
             file_metadata = {
                 "name": file_name,
-                "parents": [folder_id],
+                "parents": [output_folder_id],
                 "mimeType": "text/csv",
             }
             media = MediaFileUpload(os.path.join(path, file_name), mimetype="text/csv")
@@ -190,11 +209,9 @@ def upload_files(service, base_folder_id, file):
                 f'"{file_name}" has been uploaded to Google Drive with ID: {file.get("id")}'
             )
 
-        service.files().delete(fileId=file_id).execute()
-
     except HttpError as error:
         logging.error(f"An error occurred: {error}")
-        cleanup(file_id)
+        cleanup(input_file_id)
         raise
 
 
@@ -219,18 +236,18 @@ def execute(service):
     else:
         base_folder = results["files"][0]
     query = f"'{base_folder['id']}' in parents and trashed=false and mimeType!='application/vnd.google-apps.folder'"
-    fields = "nextPageToken, files(id, name)"
+    fields = "nextPageToken, files(id, name, parents)"
     results = service.files().list(q=query, fields=fields).execute()
     files = results.get("files", [])
     if not files:
         logging.info("No new files found.")
     else:
-        for file in files:
-            if not download_and_preprocess(service, file):
+        for input_file in files:
+            if not download_and_preprocess(service, input_file):
                 continue
-            if process(file):
-                upload_files(service, base_folder.get("id"), file)
-            cleanup(file["id"])
+            if process(input_file):
+                upload_files(service, base_folder.get("id"), input_file)
+            cleanup(input_file["id"])
 
         while "nextPageToken" in results:
             page_token = results["nextPageToken"]
@@ -241,12 +258,12 @@ def execute(service):
             )
             files = results.get("files", [])
 
-            for file in files:
-                if not download_and_preprocess(service, file):
+            for input_file in files:
+                if not download_and_preprocess(service, input_file):
                     continue
-                if process(file):
-                    upload_files(service, base_folder.get("id"), file)
-                cleanup(file["id"])
+                if process(input_file):
+                    upload_files(service, base_folder.get("id"), input_file)
+                cleanup(input_file["id"])
 
 
 # If modifying these scopes, delete the file token.json.
