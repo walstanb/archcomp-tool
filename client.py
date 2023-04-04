@@ -92,6 +92,7 @@ def cleanup(file_id):
 def process(input_file):
     try:
         input_filename = input_file["name"]
+        logging.info(f"Startting to process file {input_filename}")
         path = os.path.join(os.getcwd(), "data", input_file["id"])
         subprocess.call(
             [
@@ -190,7 +191,7 @@ def upload_files(service, base_folder_id, input_file):
                     .execute()
                 )
                 logging.info(
-                    f'"{file_name}" has been uploaded to Google Drive with ID: {file.get("id")}'
+                    f'"{file_name}" has been moved in to output folder with ID: {file.get("id")}'
                 )
                 continue
 
