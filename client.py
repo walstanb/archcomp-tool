@@ -144,7 +144,7 @@ def process(input_file):
 def upload_files(service, base_folder_id, input_file):
     logging.info("Uploading file")
     input_file_id = input_file["id"]
-    input_filename = input_file["name"].split(".")[0]
+    input_filename_woext = input_file["name"].split(".")[0]
 
     path = os.path.join(os.getcwd(), "data", input_file_id)
     csv_files = [
@@ -154,7 +154,7 @@ def upload_files(service, base_folder_id, input_file):
     ]
 
     query = "mimeType='application/vnd.google-apps.folder' and trashed=false and name='{}'".format(
-        input_filename
+        input_filename_woext
     )
     results = (
         service.files().list(q=query, fields="nextPageToken, files(id, name)").execute()
@@ -163,7 +163,7 @@ def upload_files(service, base_folder_id, input_file):
     output_folder = None
     if len(results["files"]) == 0:
         output_folder_metadata = {
-            "name": input_filename,
+            "name": input_filename_woext,
             "parents": [base_folder_id],
             "mimeType": "application/vnd.google-apps.folder",
         }
@@ -179,7 +179,7 @@ def upload_files(service, base_folder_id, input_file):
     try:
         for file_name in csv_files:
             # Move input file to results folder
-            if file_name == input_filename:
+            if file_name == input_file["name"]:
                 file = (
                     service.files()
                     .update(
