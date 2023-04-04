@@ -176,8 +176,8 @@ def upload_files(service, base_folder_id, input_file):
     output_folder_id = output_folder.get("id")
 
     # Upload each CSV file to Google Drive
-    try:
-        for output_csv_filename in output_csv_files:
+    for output_csv_filename in output_csv_files:
+        try:
             # Move input file to results folder
             if output_csv_filename == input_file["name"]:
                 f = (
@@ -213,10 +213,8 @@ def upload_files(service, base_folder_id, input_file):
                 f'"{output_csv_filename}" has been uploaded to Google Drive with ID: {f.get("id")}'
             )
 
-    except HttpError as error:
-        logging.error(f"An error occurred: {error}")
-        cleanup(input_file_id)
-        raise
+        except HttpError as error:
+            logging.error(f"An error occurred: {error}")
 
 
 def execute(service):
