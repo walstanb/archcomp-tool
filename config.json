@@ -12,6 +12,16 @@
         ]
     },
     "falstar": {
+        "system_validators": [
+            "AT",
+            "CC",
+            "AFC",
+            "AFC_normal",
+            "AFC_power",
+            "NN",
+            "SC",
+            "F16"
+        ],
         "model_cfg_path": "processing/validation/models.cfg",
         "falstar_script_relpath": "./../../processing/validation/falstar.sh",
         "set_log": "validation-log.csv",

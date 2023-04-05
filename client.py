@@ -57,7 +57,8 @@ def download_and_preprocess(service, input_file):
         return False
     data = download_csv_file(service, input_file)
     try:
-        validate(data)
+        df = pd.read_csv(io.BytesIO(data))
+        validate(df)
     except Exception as e:
         logging.error(f"Validation failed: {str(e)}")
         cleanup(input_file["id"])
@@ -65,15 +66,11 @@ def download_and_preprocess(service, input_file):
     return True
 
 
-def validate(data):
-    df = pd.read_csv(io.BytesIO(data))
-
+def validate(df):
     if "system" not in df.columns or "property" not in df.columns:
         raise ValueError("CSV data does not contain system or property headers")
 
-    required_vals = set(
-        ("AT", "CC", "AFC", "AFC_normal", "AFC_power", "NN", "SC", "F16")
-    )
+    required_vals = set(config.get("falstar").get("system_validators"))
     system_vals = set(df["system"].tolist())
 
     if not system_vals.issubset(required_vals):
