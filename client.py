@@ -80,11 +80,14 @@ def validate(data):
         raise ValueError("Invalid system values")
 
 
-def cleanup(file_id):
+def cleanup(file_or_dir):
     try:
-        folder_path = os.path.join(os.getcwd(), config.get("local_store_dir"), file_id)
-        shutil.rmtree(folder_path)
-        logging.info("Localfiles Cleanup complete...")
+        path = os.path.join(os.getcwd(), config.get("local_store_dir"), file_or_dir)
+        if os.path.isfile(path):
+            os.remove(path)
+        else:
+            shutil.rmtree(path)
+            logging.info("Localfiles Cleanup complete...")
 
     except FileNotFoundError:
         logging.error(f"Error: {folder_path} does not exist.")
@@ -92,6 +95,49 @@ def cleanup(file_id):
         logging.error(f"Error: {folder_path} : {e.strerror}")
 
 
+def split_input_file(split_by_col, variant="falstar"):
+    def decorator(func):
+        def wrapper(input_file):
+            try:
+                path = os.path.join(
+                    os.getcwd(), config.get("local_store_dir"), input_file["name"]
+                )
+                df = pd.read_csv(path)
+                groups = df.groupby(split_by_col)
+                setlog_path = config.get(variant).get("set_log")
+                setreport_path = config.get(variant).get("set_report")
+
+                dump = {}
+                for name, group in groups:
+                    fname = f"{name}.csv"
+                    group.to_csv(fname, index=False)
+                    dump.setdefault("fnames", []).append(fname)
+                    if func({"name": fname, "id": input_file["id"]}):
+                        dump.setdefault("setlogs", []).append(f"{name}_{setlog_path}")
+                        dump.setdefault("setreports", []).append(
+                            f"{name}_{setreport_path}"
+                        )
+
+                pd.concat(pd.read_csv(dump.get("setlogs"))).to_csv(
+                    setlog_path, index=False
+                )
+                pd.concat(pd.read_csv(dump.get("setreports"))).to_csv(
+                    setreport_path, index=False
+                )
+
+                for files in dump.values():
+                    for file in files:
+                        cleanup(file)
+
+            except FileNotFoundError as e:
+                logging.error(f"FileNotFoundError: {str(e)}")
+
+        return wrapper
+
+    return decorator
+
+
+@split_input_file(config.get("split_by_col"))
 def process(input_file):
     try:
         input_filename = input_file["name"]
@@ -108,12 +154,14 @@ def process(input_file):
             ]
         )
 
-        cfg_string = f'(include "models.cfg")\n(set-log "validation-log.csv")\
-        \n(set-report "validation-report.csv")\n(validate "{input_filename}")'
+        setlog_path = config.get("falstar").get("set_log")
+        setreport_path = config.get("falstar").get("set_report")
+        cfg_string = f'(include "models.cfg")\n(set-log "{input_filename}_{setlog_path}")\
+        \n(set-report "{input_filename}_{setreport_path}")\n(validate "{input_filename}")'
 
-        filename_withoutext = input_filename.split(".")[0]
+        filename_woext = os.path.splitext(input_filename)
         with open(
-            os.path.join(path, f"{filename_withoutext}.cfg"),
+            os.path.join(path, f"{filename_woext}.cfg"),
             "w",
         ) as f:
             f.write(cfg_string)
@@ -122,7 +170,7 @@ def process(input_file):
             [
                 "bash",
                 config.get("falstar").get("falstar_script_relpath"),
-                str(f"{filename_withoutext}.cfg"),
+                str(f"{filename_woext}.cfg"),
             ],
             cwd=str(path),
         )
@@ -149,7 +197,7 @@ def process(input_file):
 def upload_files(service, base_folder_id, input_file):
     logging.info("Uploading file")
     input_file_id = input_file["id"]
-    input_filename_woext = input_file["name"].split(".")[0]
+    input_filename_woext = os.path.splitext(input_file["name"])
 
     path = os.path.join(os.getcwd(), config.get("local_store_dir"), input_file_id)
     output_csv_files = [
