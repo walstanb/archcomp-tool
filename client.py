@@ -1,5 +1,6 @@
 import subprocess
 import pandas as pd
+import json
 import io
 import os
 import shutil
@@ -11,8 +12,10 @@ from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+config = json.load(open("config.json"))
+
 logging.basicConfig(
-    filename="archcomp.log",
+    filename=config.get("log_filename"),
     level=logging.DEBUG,
     format="%(asctime)s - %(levelname)s - %(message)s",
 )
@@ -32,7 +35,7 @@ def download_csv_file(service, file):
             )
         fh.seek(0)
 
-        path = os.path.join("data", file["id"])
+        path = os.path.join(config.get("local_store_dir"), file["id"])
         if not os.path.exists(path):
             os.mkdir(path)
 
@@ -79,9 +82,9 @@ def validate(data):
 
 def cleanup(file_id):
     try:
-        folder_path = os.path.join(os.getcwd(), "data", file_id)
+        folder_path = os.path.join(os.getcwd(), config.get("local_store_dir"), file_id)
         shutil.rmtree(folder_path)
-        logging.info("Cleanup started..")
+        logging.info("Localfiles Cleanup complete...")
 
     except FileNotFoundError:
         logging.error(f"Error: {folder_path} does not exist.")
@@ -93,12 +96,14 @@ def process(input_file):
     try:
         input_filename = input_file["name"]
         logging.info(f"Starting to process file {input_filename}")
-        path = os.path.join(os.getcwd(), "data", input_file["id"])
+        path = os.path.join(
+            os.getcwd(), config.get("local_store_dir"), input_file["id"]
+        )
         subprocess.call(
             [
                 "scp",
                 "-r",
-                "processing/validation/models.cfg",
+                config.get("falstar").get("model_cfg_path"),
                 path,
             ]
         )
@@ -116,7 +121,7 @@ def process(input_file):
         p = subprocess.check_output(
             [
                 "bash",
-                "./../../processing/validation/falstar.sh",
+                config.get("falstar").get("falstar_script_relpath"),
                 str(f"{filename_withoutext}.cfg"),
             ],
             cwd=str(path),
@@ -146,7 +151,7 @@ def upload_files(service, base_folder_id, input_file):
     input_file_id = input_file["id"]
     input_filename_woext = input_file["name"].split(".")[0]
 
-    path = os.path.join(os.getcwd(), "data", input_file_id)
+    path = os.path.join(os.getcwd(), config.get("local_store_dir"), input_file_id)
     output_csv_files = [
         f
         for f in os.listdir(path)
@@ -191,7 +196,7 @@ def upload_files(service, base_folder_id, input_file):
                     .execute()
                 )
                 logging.info(
-                    f'"{output_csv_filename}" has been moved in to output folder with ID: {f.get("id")}'
+                    f'"{output_csv_filename}" has been moved into output folder with ID: {f.get("id")}'
                 )
                 continue
 
@@ -217,9 +222,62 @@ def upload_files(service, base_folder_id, input_file):
             logging.error(f"An error occurred: {error}")
 
 
+def sync_log(service, folder_id):
+    file_path = os.path.join(os.getcwd(), config.get("log_filename"))
+
+    try:
+        logging.info(f"Starting log file sync...")
+
+        # Get the list of files in the Google Drive folder
+        folder_query = "trashed=false and mimeType='application/vnd.google-apps.folder' and '{}' in parents".format(
+            folder_id
+        )
+        folder_results = (
+            service.files()
+            .list(q=folder_query, fields="nextPageToken, files(id, name)")
+            .execute()
+        )
+        folder_items = folder_results.get("files", [])
+
+        # Find the file in the Google Drive folder
+        file_query = "trashed=false and name='{}' and '{}' in parents".format(
+            os.path.basename(file_path), folder_id
+        )
+        file_results = (
+            service.files()
+            .list(q=file_query, fields="nextPageToken, files(id, name)")
+            .execute()
+        )
+        file_items = file_results.get("files", [])
+        if len(file_items) > 0:
+            file_id = file_items[0]["id"]
+            file_metadata = {"name": os.path.basename(file_path)}
+            media = MediaFileUpload(file_path, resumable=True)
+
+            service.files().update(
+                fileId=file_id, body=file_metadata, media_body=media, fields="id"
+            ).execute()
+
+        else:
+            file_metadata = {
+                "name": os.path.basename(file_path),
+                "parents": [folder_id],
+            }
+            media = MediaFileUpload(file_path, resumable=True)
+            service.files().create(
+                body=file_metadata, media_body=media, fields="id"
+            ).execute()
+            logging.info(f"Creating new logfile '{file_metadata['name']}'")
+
+        logging.info(f"Logfile sync complete.")
+    except HttpError as error:
+        logging.error(f"An error occurred: {error}")
+        logging.info(f"Logfile sync failed.")
+
+
 def execute(service):
     try:
-        base_folder_name = "Archcomp"
+        base_folder_name = config.get("base_gdrive_folder_name")
         query = f"mimeType='application/vnd.google-apps.folder' and trashed=false and name='{base_folder_name}'"
         results = (
             service.files()
@@ -269,6 +327,8 @@ def execute(service):
                     if process(input_file):
                         upload_files(service, base_folder.get("id"), input_file)
                     cleanup(input_file["id"])
+        logging.info("Processing conplete.")
+        sync_log(service, base_folder["id"])
     except HttpError as error:
         if error.resp.status == 504:
             logging.error(
@@ -279,27 +339,28 @@ def execute(service):
 
 
 # If modifying these scopes, delete the file token.json.
-SCOPES = [
-    "https://www.googleapis.com/auth/drive",
-    "https://www.googleapis.com/auth/drive.file",
-]
+SCOPES = config.get("auth").get("scopes")
 
 
 def main():
     logging.info("Starting...")
     creds = None
-    if os.path.exists("token.json"):
-        creds = Credentials.from_authorized_user_file("token.json", SCOPES)
+    if os.path.exists(config.get("auth").get("token")):
+        creds = Credentials.from_authorized_user_file(
+            config.get("auth").get("token"), SCOPES
+        )
 
     if not creds or not creds.valid:
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(Request())
             logging.info("Requesting new token")
         else:
-            flow = InstalledAppFlow.from_client_secrets_file("creds.json", SCOPES)
+            flow = InstalledAppFlow.from_client_secrets_file(
+                config.get("auth").get("creds"), SCOPES
+            )
             creds = flow.run_local_server(port=0)
 
-        with open("token.json", "w") as token:
+        with open(config.get("auth").get("token"), "w") as token:
             token.write(creds.to_json())
 
     try:

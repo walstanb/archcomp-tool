@@ -1,0 +1,17 @@
+{
+    "log_filename": "archcomp.log",
+    "local_store_dir": "data",
+    "base_gdrive_folder_name": "Archcomp",
+    "auth": {
+        "token": "token.json",
+        "creds": "creds.json",
+        "scopes": [
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/drive.file"
+        ]
+    },
+    "falstar": {
+        "model_cfg_path": "processing/validation/models.cfg",
+        "falstar_script_relpath": "./../../processing/validation/falstar.sh"
+    }
+}
