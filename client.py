@@ -90,9 +90,9 @@ def cleanup(file_or_dir):
             logging.info("Localfiles Cleanup complete...")
 
     except FileNotFoundError:
-        logging.error(f"Error: {folder_path} does not exist.")
+        logging.error(f"Error: {path} does not exist.")
     except OSError as e:
-        logging.error(f"Error: {folder_path} : {e.strerror}")
+        logging.error(f"Error: {path} : {e.strerror}")
 
 
 def split_input_file(split_by_col, variant="falstar"):
@@ -100,37 +100,70 @@ def split_input_file(split_by_col, variant="falstar"):
         def wrapper(input_file):
             try:
                 path = os.path.join(
-                    os.getcwd(), config.get("local_store_dir"), input_file["name"]
+                    os.getcwd(), config.get("local_store_dir"), input_file["id"]
                 )
-                df = pd.read_csv(path)
-                groups = df.groupby(split_by_col)
+                input_filename = input_file["name"]
+                input_filename_woext = os.path.splitext(input_filename)[0]
                 setlog_path = config.get(variant).get("set_log")
                 setreport_path = config.get(variant).get("set_report")
-
                 dump = {}
-                for name, group in groups:
-                    fname = f"{name}.csv"
-                    group.to_csv(fname, index=False)
-                    dump.setdefault("fnames", []).append(fname)
-                    if func({"name": fname, "id": input_file["id"]}):
-                        dump.setdefault("setlogs", []).append(f"{name}_{setlog_path}")
-                        dump.setdefault("setreports", []).append(
-                            f"{name}_{setreport_path}"
-                        )
 
-                pd.concat(pd.read_csv(dump.get("setlogs"))).to_csv(
-                    setlog_path, index=False
-                )
-                pd.concat(pd.read_csv(dump.get("setreports"))).to_csv(
-                    setreport_path, index=False
-                )
+                if not split_by_col:
+                    if func(input_file):
+                        dump.setdefault("setlogs", []).append(
+                            os.path.join(path, f"{input_filename_woext}_{setlog_path}")
+                        )
+                        dump.setdefault("setreports", []).append(
+                            os.path.join(
+                                path, f"{input_filename_woext}_{setreport_path}"
+                            )
+                        )
+                else:
+                    logging.info("Splitting up the CSV file...")
+                    df = pd.read_csv(os.path.join(path, input_file["name"]))
+                    groups = df.groupby(split_by_col)
+
+                    for name, group in groups:
+                        fname = f"{input_filename_woext}_{name}.csv"
+                        group.to_csv(os.path.join(path, fname), index=False)
+                        dump.setdefault("fnames", []).append(fname)
+                        if func({"name": fname, "id": input_file["id"]}):
+                            dump.setdefault("setlogs", []).append(
+                                os.path.join(
+                                    path, f"{input_filename_woext}_{name}_{setlog_path}"
+                                )
+                            )
+                            dump.setdefault("setreports", []).append(
+                                os.path.join(
+                                    path,
+                                    f"{input_filename_woext}_{name}_{setreport_path}",
+                                )
+                            )
+
+                if dump["setlogs"]:
+                    pd.concat([pd.read_csv(fp) for fp in dump.get("setlogs")]).to_csv(
+                        os.path.join(path, setlog_path), index=False
+                    )
+
+                if dump["setreports"]:
+                    pd.concat(
+                        [pd.read_csv(fp) for fp in dump.get("setreports")]
+                    ).to_csv(os.path.join(path, setreport_path), index=False)
 
                 for files in dump.values():
                     for file in files:
-                        cleanup(file)
+                        cleanup(os.path.join(input_file["id"], os.path.basename(file)))
+
+                return True
 
             except FileNotFoundError as e:
                 logging.error(f"FileNotFoundError: {str(e)}")
+
+                return False
+
+            except Exception as e:
+                logging.error(f"An error occurred: {str(e)}")
+                return False
 
         return wrapper
 
@@ -141,6 +174,7 @@ def split_input_file(split_by_col, variant="falstar"):
 def process(input_file):
     try:
         input_filename = input_file["name"]
+        filename_woext = os.path.splitext(input_filename)[0]
         logging.info(f"Starting to process file {input_filename}")
         path = os.path.join(
             os.getcwd(), config.get("local_store_dir"), input_file["id"]
@@ -156,10 +190,9 @@ def process(input_file):
 
         setlog_path = config.get("falstar").get("set_log")
         setreport_path = config.get("falstar").get("set_report")
-        cfg_string = f'(include "models.cfg")\n(set-log "{input_filename}_{setlog_path}")\
-        \n(set-report "{input_filename}_{setreport_path}")\n(validate "{input_filename}")'
+        cfg_string = f'(include "models.cfg")\n(set-log "{filename_woext}_{setlog_path}")\
+        \n(set-report "{filename_woext}_{setreport_path}")\n(validate "{input_filename}")'
 
-        filename_woext = os.path.splitext(input_filename)
         with open(
             os.path.join(path, f"{filename_woext}.cfg"),
             "w",
@@ -185,19 +218,17 @@ def process(input_file):
 
     except ValueError as e:
         logging.error(f"Falstar error: {str(e)}")
-        cleanup(input_file["id"])
         return False
 
     except Exception as e:
         logging.error(f"An error occurred: {str(e)}")
-        cleanup(input_file["id"])
         return False
 
 
 def upload_files(service, base_folder_id, input_file):
-    logging.info("Uploading file")
+    logging.info("Uploading files...")
     input_file_id = input_file["id"]
-    input_filename_woext = os.path.splitext(input_file["name"])
+    input_filename_woext = os.path.splitext(input_file["name"])[0]
 
     path = os.path.join(os.getcwd(), config.get("local_store_dir"), input_file_id)
     output_csv_files = [
@@ -375,7 +406,7 @@ def execute(service):
                     if process(input_file):
                         upload_files(service, base_folder.get("id"), input_file)
                     cleanup(input_file["id"])
-        logging.info("Processing conplete.")
+        logging.info("Processing complete.")
         sync_log(service, base_folder["id"])
     except HttpError as error:
         if error.resp.status == 504:
