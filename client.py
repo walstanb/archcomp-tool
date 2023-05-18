@@ -13,6 +13,11 @@ from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 config = json.load(open("config.json"))
+vocab = json.load(open("vocab.json"))
+property_vocab_dict = {}
+for key, vals in vocab["property"].items():
+    for val in vals:
+        property_vocab_dict[val] = key
 
 logging.basicConfig(
     filename=config.get("log_filename"),
@@ -66,9 +71,24 @@ def download_and_preprocess(service, input_file):
     return True
 
 
+def apply_vocab(df):
+    # fix property values
+    for i, prop in enumerate(df["property"]):
+        if prop in property_vocab_dict.keys():
+            df.at[i, "property"] = property_vocab_dict[prop]
+
+    # fix system values
+
+    return df
+
+
 def validate(df):
     if "system" not in df.columns or "property" not in df.columns:
-        raise ValueError("CSV data does not contain system or property headers")
+        raise ValueError(
+            "Skipped file, CSV data does not contain system or property headers!"
+        )
+
+    df = apply_vocab(df)
 
     required_vals = set(config.get("falstar").get("system_validators"))
     system_vals = set(df["system"].tolist())
