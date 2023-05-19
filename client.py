@@ -41,7 +41,7 @@ def download_and_preprocess(service, input_file):
         return False
 
     try:
-        request = service.files().get_media(fileId=file["id"])
+        request = service.files().get_media(fileId=input_file["id"])
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
         done = False
@@ -63,8 +63,7 @@ def download_and_preprocess(service, input_file):
 
         # Write the downloaded CSV file to the system
         file_path = os.path.join(path, input_file["name"])
-        with open(file_path, "wb") as f:
-            shutil.copyfileobj(fh, f)
+        df.to_csv(file_path)
 
     except HttpError as error:
         logging.error(
@@ -85,15 +84,15 @@ def apply_vocab(df):
         if prop in property_vocab_dict.keys():
             df.at[i, "property"] = property_vocab_dict[prop]
 
-        # fix system values
-        for i, sys in enumerate(df["system"]):
-            if sys in system_vocab_dict.keys():
-                for d in system_vocab_dict[sys]:
-                    if not d:
-                        continue
-                    ((sys_val, lst),) = d.items()
-                    if df["property"][i] in lst:
-                        df.at[i, "system"] = sys_val
+    # fix system values
+    for i, sys in enumerate(df["system"]):
+        if sys in system_vocab_dict.keys():
+            for d in system_vocab_dict[sys]:
+                if not d:
+                    continue
+                ((sys_val, lst),) = d.items()
+                if df["property"][i] in lst:
+                    df.at[i, "system"] = sys_val
     return df
 
 
