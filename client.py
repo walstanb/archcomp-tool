@@ -14,10 +14,18 @@ from googleapiclient.errors import HttpError
 
 config = json.load(open("config.json"))
 vocab = json.load(open("vocab.json"))
+
 property_vocab_dict = {}
 for key, vals in vocab["property"].items():
     for val in vals:
         property_vocab_dict[val] = key
+
+system_vocab_dict = {}
+for key, vals in vocab["system"].items():
+    for val in vals:
+        if val not in system_vocab_dict:
+            system_vocab_dict[val] = []
+        system_vocab_dict[val].append({key: vals[val]})
 
 logging.basicConfig(
     filename=config.get("log_filename"),
@@ -77,8 +85,15 @@ def apply_vocab(df):
         if prop in property_vocab_dict.keys():
             df.at[i, "property"] = property_vocab_dict[prop]
 
-    # fix system values
-
+        # fix system values
+        for i, sys in enumerate(df["system"]):
+            if sys in system_vocab_dict.keys():
+                for d in system_vocab_dict[sys]:
+                    if not d:
+                        continue
+                    ((sys_val, lst),) = d.items()
+                    if df["property"][i] in lst:
+                        df.at[i, "system"] = sys_val
     return df
 
 

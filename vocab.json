@@ -2,7 +2,6 @@
     "system": {
         "AT": {},
         "CC": {},
-        "AFC": {},
         "AFC_normal": {
             "AFC": [
                 "(AFC27 0.008)",
@@ -63,7 +62,8 @@
             "car5"
         ],
         "CCx": [
-            "CCX"
+            "CCX",
+            "ccx"
         ],
         "F16a": [],
         "(NN 0.04)": [
@@ -74,7 +74,8 @@
             "NNB"
         ],
         "NNx": [
-            "NNX"
+            "NNX",
+            "nnx"
         ],
         "SCa": [
             "SC"
