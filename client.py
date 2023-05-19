@@ -34,8 +34,12 @@ logging.basicConfig(
 )
 
 
-def download_csv_file(service, file):
-    logger = logging.getLogger(__name__)
+def download_and_preprocess(service, input_file):
+    name, ext = os.path.splitext(input_file["name"])
+    if ext != ".csv":
+        logging.info(f"{input_file['name']}: File skipped not a CSV file.")
+        return False
+
     try:
         request = service.files().get_media(fileId=file["id"])
         fh = io.BytesIO()
@@ -43,35 +47,31 @@ def download_csv_file(service, file):
         done = False
         while done is False:
             status, done = downloader.next_chunk()
-            logger.info(
-                f"Downloaded {int(status.progress() * 100)}% of {file['name']}."
+            logging.info(
+                f"Downloaded {int(status.progress() * 100)}% of {input_file['name']}."
             )
         fh.seek(0)
 
-        path = os.path.join(config.get("local_store_dir"), file["id"])
+        path = os.path.join(config.get("local_store_dir"), input_file["id"])
         if not os.path.exists(path):
             os.mkdir(path)
 
-        file_path = os.path.join(path, file["name"])
+        # Parse apply vocab and validate
+        df = pd.read_csv(io.BytesIO(fh.getvalue()))
+        df = apply_vocab(df)
+        validate(df)
+
+        # Write the downloaded CSV file to the system
+        file_path = os.path.join(path, input_file["name"])
         with open(file_path, "wb") as f:
             shutil.copyfileobj(fh, f)
 
     except HttpError as error:
-        logger.error(f"An error occurred while downloading {file['name']}: {error}")
+        logging.error(
+            f"An error occurred while downloading {input_file['name']}: {error}"
+        )
         raise
 
-    return fh.getvalue()
-
-
-def download_and_preprocess(service, input_file):
-    name, ext = os.path.splitext(input_file["name"])
-    if ext != ".csv":
-        logging.info(f"{input_file['name']}: File skipped not a CSV file.")
-        return False
-    data = download_csv_file(service, input_file)
-    try:
-        df = pd.read_csv(io.BytesIO(data))
-        validate(df)
     except Exception as e:
         logging.error(f"Validation failed: {str(e)}")
         cleanup(input_file["id"])
@@ -102,8 +102,6 @@ def validate(df):
         raise ValueError(
             "Skipped file, CSV data does not contain system or property headers!"
         )
-
-    df = apply_vocab(df)
 
     required_vals = set(config.get("falstar").get("system_validators"))
     system_vals = set(df["system"].tolist())
