@@ -103,6 +103,9 @@ def validate(df):
             "Skipped file, CSV data does not contain system or property headers!"
         )
 
+    if "system_validators" not in config.get("falstar"):
+        return
+
     required_vals = set(config.get("falstar").get("system_validators"))
     system_vals = set(df["system"].tolist())
 
